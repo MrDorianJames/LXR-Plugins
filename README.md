@@ -8,13 +8,22 @@ The suite consists of six plugins:
 
 **Voices (instruments):**
 - **LxrDrum** — kick / tom / general drum voice (3-op FM with transient generator and SVF)
+![LxrDrum*](LxrDrum-screenshot.png)
 - **LxrSnare** — subtractive clap/snare voice with separate noise filter routing
+![LxrSnare](LxrSnare-screenshot.png)
 - **LxrCymbal** — 3-operator FM percussion voice tuned for cymbal-like inharmonic content
+![LxrCymbal](LxrCymbal-screenshot.png)  
 - **LxrHiHat** — hi-hat voice with closed/open via parameter or note number split
+![LxrHiHat](LxrHiHat-screenshot.png)
 
 **Effects (audio processors):**
 - **LxrFilter** — the LXR state-variable filter as a standalone stereo effect (LP/HP/BP/Unity BP/Notch/Peak/2-Pole LP)
+
+![alt text](LxrFilter-screenshot.png)
+
 - **LxrDistortion** — the LXR per-voice waveshaper as a standalone effect
+
+![alt text](LxrDistortion-screenshot.png)
 
 > [!IMPORTANT]
 > ## License — read this first
