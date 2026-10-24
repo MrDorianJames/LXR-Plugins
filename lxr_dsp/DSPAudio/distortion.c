@@ -36,7 +36,7 @@
 #include "distortion.h"
 #include "math.h"
 //--------------------------------------------------
-__inline void setDistortionShape(Distortion *dist, uint8_t shape)
+void setDistortionShape(Distortion *dist, uint8_t shape)
 {
 	dist->shape = 2*(shape/128.f)/(1-(shape/128.f));
 }

@@ -10,6 +10,11 @@ set (CMAKE_CXX_STANDARD          17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set (CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Work around clang 19 + Windows SDK header conflict (_xend multiversioning error)
+if (MSVC)
+    add_compile_definitions (__RTMINTRIN_H)
+endif()
+
 # ----------------------------------------------------------------------
 # 1. JUCE  (provides the Standalone / VST3 plugin scaffolding)
 # ----------------------------------------------------------------------
@@ -61,10 +66,16 @@ target_include_directories (lxr_dsp_lib
 
 # The LXR firmware uses GCC's gnu89 inline-in-header pattern. Force it
 # even when the host project default is C99/C11.
-target_compile_options (lxr_dsp_lib PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:-std=gnu89>
-    $<$<C_COMPILER_ID:GNU,Clang>:-Wno-unused-but-set-variable -Wno-unused-variable -Wno-incompatible-pointer-types -Wno-builtin-macro-redefined>
-)
+if (NOT MSVC)
+    target_compile_options (lxr_dsp_lib PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:-std=gnu89>
+        $<$<C_COMPILER_ID:GNU,Clang>:-Wno-unused-but-set-variable -Wno-unused-variable -Wno-incompatible-pointer-types -Wno-builtin-macro-redefined>
+    )
+endif()
+
+if (WIN32)
+    target_compile_definitions (lxr_dsp_lib PUBLIC _USE_MATH_DEFINES)
+endif()
 
 # ----------------------------------------------------------------------
 # 4. Plugins
@@ -80,6 +91,12 @@ add_subdirectory (plugins/fx_distortion)
 # 5. Standalone smoke test  (no JUCE - links directly to lxr_dsp_lib)
 # ----------------------------------------------------------------------
 add_executable (lxr_voice_test test/lxr_voice_test.c)
-target_link_libraries (lxr_voice_test PRIVATE lxr_dsp_lib m)
+if (MSVC)
+    target_link_libraries (lxr_voice_test PRIVATE lxr_dsp_lib)
+else()
+    target_link_libraries (lxr_voice_test PRIVATE lxr_dsp_lib m)
+endif()
 set_target_properties (lxr_voice_test PROPERTIES
                        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
+
+

@@ -2,12 +2,14 @@
 
 #include "../shared/BlockAccumulator.h"
 
+#include <memory>
+
 #include <cstdint>
 
 namespace lxr {
 
 /**
- * SnareEngine - wraps the LXR snareVoice singleton (Snare.c).
+ * SnareEngine - wraps the LXR snareVoice global (Snare.c); each instance keeps a private copy of its state (see shared/VoiceContext.h).
  *
  * The snare is a noise + tonal-oscillator + bandpass-filter voice
  * with the classic "mix between osc and noise" parameter that makes
@@ -20,7 +22,7 @@ class SnareEngine
 {
 public:
     SnareEngine();
-    ~SnareEngine() = default;
+    ~SnareEngine();
 
     void prepare (double sampleRate);
     void setHostBpm (float bpm) noexcept;
@@ -46,6 +48,11 @@ public:
     void setPan           (float norm01) noexcept;
 
 private:
+    // Private copy of this instance's DSP voice state (see shared/VoiceContext.h).
+    // Held through a pointer so this header needs no LXR C headers.
+    struct Ctx;
+    std::unique_ptr<Ctx> ctx;
+
     BlockAccumulator accum;
     BlockAccumulator::Generator generator;
     double currentSampleRate { 44100.0 };

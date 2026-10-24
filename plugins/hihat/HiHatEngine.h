@@ -1,12 +1,14 @@
 #pragma once
 
 #include "../shared/BlockAccumulator.h"
+
+#include <memory>
 #include <cstdint>
 
 namespace lxr {
 
 /**
- * HiHatEngine - wraps the LXR hatVoice singleton (HiHat.c).
+ * HiHatEngine - wraps the LXR hatVoice global (HiHat.c); each instance keeps a private copy of its state (see shared/VoiceContext.h).
  *
  * Architecturally the hat is a 3-op FM voice like the cymbal, but with
  * two separate decay-time settings - one for closed hat triggers, one
@@ -19,7 +21,7 @@ public:
     enum class Mode { NoteSplit = 0, AlwaysClosed = 1, AlwaysOpen = 2 };
 
     HiHatEngine();
-    ~HiHatEngine() = default;
+    ~HiHatEngine();
 
     void prepare (double sampleRate);
     void setHostBpm (float bpm) noexcept;
@@ -64,6 +66,11 @@ public:
     void setPan           (float norm01) noexcept;
 
 private:
+    // Private copy of this instance's DSP voice state (see shared/VoiceContext.h).
+    // Held through a pointer so this header needs no LXR C headers.
+    struct Ctx;
+    std::unique_ptr<Ctx> ctx;
+
     BlockAccumulator accum;
     BlockAccumulator::Generator generator;
     double currentSampleRate { 44100.0 };

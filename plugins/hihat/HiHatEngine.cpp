@@ -1,5 +1,6 @@
 #include "HiHatEngine.h"
 #include "../shared/LxrEngineBase.h"
+#include "../shared/VoiceContext.h"
 
 extern "C" {
     #include "HiHat.h"
@@ -21,8 +22,18 @@ namespace {
     }
 }
 
-HiHatEngine::HiHatEngine()
+struct HiHatEngine::Ctx
 {
+    VoiceContext<HiHatVoice> v { &hatVoice, 1 };
+};
+
+HiHatEngine::~HiHatEngine() = default;
+
+HiHatEngine::HiHatEngine() : ctx (std::make_unique<Ctx>())
+{
+    // From here on the DSP global holds THIS instance's state.
+    auto lk = ctx->v.lock();
+
     ensureGlobalInit();
     HiHat_init();
 
@@ -35,11 +46,12 @@ HiHatEngine::HiHatEngine()
 }
 
 void HiHatEngine::prepare (double sr)         { currentSampleRate = sr; accum.reset(); }
-void HiHatEngine::setHostBpm (float bpm) noexcept { lxr_setBpmFloat (bpm); }
-void HiHatEngine::process (float* d, int n) noexcept { accum.fillBuffer (d, n, generator); }
+void HiHatEngine::setHostBpm (float bpm) noexcept { auto lk = ctx->v.lock(); lxr_setBpmFloat (bpm); }
+void HiHatEngine::process (float* d, int n) noexcept { auto lk = ctx->v.lock(); accum.fillBuffer (d, n, generator); }
 
 void HiHatEngine::trigger (uint8_t velocity, uint8_t note) noexcept
 {
+    auto lk = ctx->v.lock();
     // Decide closed vs open based on mode.
     uint8_t isOpen = 0;
     switch (mode)
@@ -58,11 +70,13 @@ void HiHatEngine::trigger (uint8_t velocity, uint8_t note) noexcept
 
 void HiHatEngine::setMode (int m) noexcept
 {
+    auto lk = ctx->v.lock();
     mode = static_cast<Mode> (std::clamp (m, 0, 2));
 }
 
 void HiHatEngine::setOpenSplitNote (int midiNote) noexcept
 {
+    auto lk = ctx->v.lock();
     openSplitNote = static_cast<uint8_t> (std::clamp (midiNote, 0, 127));
 }
 
@@ -96,11 +110,13 @@ namespace {
 
 void HiHatEngine::setPitch (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.osc.midiFreq = pitchToMidiFreq (n);
 }
 
 void HiHatEngine::setWaveform (int index) noexcept
 {
+    auto lk = ctx->v.lock();
     // Clamp to safe range - waveforms 5/6 (user samples) read from
     // SD-card memory we don't have on desktop and would crash.
     hatVoice.osc.waveform = static_cast<uint8_t> (std::clamp (index, 0, 4));
@@ -108,16 +124,19 @@ void HiHatEngine::setWaveform (int index) noexcept
 
 void HiHatEngine::setMod1Pitch (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.modOsc.midiFreq = pitchToMidiFreq (n);
 }
 
 void HiHatEngine::setMod1Amount (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.fmModAmount1 = std::clamp (n, 0.0f, 1.0f);
 }
 
 void HiHatEngine::setMod1Waveform (int index) noexcept
 {
+    auto lk = ctx->v.lock();
     // Sine = clean harmonic FM; Noise = grit/noise. The firmware
     // hardcodes Sine here at init - changing it gives you sounds the
     // hardware doesn't make out of the box.
@@ -126,16 +145,19 @@ void HiHatEngine::setMod1Waveform (int index) noexcept
 
 void HiHatEngine::setMod2Pitch (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.modOsc2.midiFreq = pitchToMidiFreq (n);
 }
 
 void HiHatEngine::setMod2Amount (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.fmModAmount2 = std::clamp (n, 0.0f, 1.0f);
 }
 
 void HiHatEngine::setMod2Waveform (int index) noexcept
 {
+    auto lk = ctx->v.lock();
     // Firmware default = Noise. This is what makes the hihat sound
     // hi-hat-like rather than bell-like. Try Sine + heavy mod2 amount
     // for clean inharmonic FM tones (gongs, bells, clangs).
@@ -160,11 +182,13 @@ void HiHatEngine::setMod2Waveform (int index) noexcept
 // the LXR-02 hardware's decay-time dial.
 void HiHatEngine::setDecayClosed (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.decayClosed = slopeEg2_calcDecay (toMidiData (n));
 }
 
 void HiHatEngine::setDecayOpen (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.decayOpen = slopeEg2_calcDecay (toMidiData (n));
 }
 
@@ -172,11 +196,13 @@ void HiHatEngine::setDecayOpen (float n) noexcept
 // closed/open decay parameters above).
 void HiHatEngine::setVolEgAttack (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setAttack (&hatVoice.oscVolEg, toMidiData (n), 0);
 }
 
 void HiHatEngine::setVolEgSlope (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setSlope (&hatVoice.oscVolEg, toMidiData (n));
 }
 
@@ -184,16 +210,19 @@ void HiHatEngine::setVolEgSlope (float n) noexcept
 
 void HiHatEngine::setTransientAmt (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.transGen.volume = std::clamp (n, 0.0f, 1.0f);
 }
 
 void HiHatEngine::setTransientWave (int index) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.transGen.waveform = static_cast<uint8_t> (std::clamp (index, 0, 7));
 }
 
 void HiHatEngine::setSnap (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.snapEg.value = std::clamp (n, 0.0f, 1.0f) * 0.999f;
 }
 
@@ -201,16 +230,19 @@ void HiHatEngine::setSnap (float n) noexcept
 
 void HiHatEngine::setFilterCutoff (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     SVF_directSetFilterValue (&hatVoice.filter, cutoffSliderToSvfInput (n));
 }
 
 void HiHatEngine::setFilterReso (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     SVF_setReso (&hatVoice.filter, std::clamp (n, 0.0f, 0.99f));
 }
 
 void HiHatEngine::setFilterType (int type) noexcept
 {
+    auto lk = ctx->v.lock();
     uint8_t t = 0;
     switch (type) {
         case 1: t = 0x1; break;
@@ -223,16 +255,19 @@ void HiHatEngine::setFilterType (int type) noexcept
 
 void HiHatEngine::setDistortion (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     setDistortionShape (&hatVoice.distortion, toMidiData (n));
 }
 
 void HiHatEngine::setVolume (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     hatVoice.vol = std::clamp (n, 0.0f, 1.0f);
 }
 
 void HiHatEngine::setPan (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     HiHat_setPan (toMidiData (n));
 }
 

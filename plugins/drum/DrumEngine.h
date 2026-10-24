@@ -2,6 +2,8 @@
 
 #include "../shared/BlockAccumulator.h"
 
+#include <memory>
+
 #include <atomic>
 #include <cstdint>
 
@@ -11,25 +13,23 @@ namespace lxr {
  * DrumEngine
  *
  * Thin C++ wrapper around the LXR DrumVoice (slot 0 of voiceArray[]).
- * Owns no audio state itself — all state lives in the global voiceArray
- * inside lxr_dsp. This object exists to:
+ * Responsibilities:
  *   1. provide a strongly-typed parameter API to the JUCE processor
  *   2. translate normalized float [0..1] parameter values into the
  *      varied scales and types the DSP code expects
  *   3. drive the BlockAccumulator with the voice's render function
  *
- * One DrumEngine instance per plugin instance. Because voiceArray is a
- * file-scope global in DrumVoice.c, instantiating two DrumEngines in
- * the same process would alias their state. That's a limitation
- * inherited from the original firmware design; if you need multiple
- * drum voices in one DAW, load multiple plugin instances and the host
- * will load separate DLLs/shared-objects (not guaranteed by all hosts).
+ * Multiple instances: the LXR DSP keeps the voice in a file-scope global
+ * (voiceArray), which every instance in the same process would share.
+ * To keep instances independent, each engine owns a private copy of that
+ * state (see shared/VoiceContext.h) which is swapped into the global only
+ * while this instance's methods run.
  */
 class DrumEngine
 {
 public:
     DrumEngine();
-    ~DrumEngine() = default;
+    ~DrumEngine();
 
     /** Called by the plugin from prepareToPlay. */
     void prepare (double sampleRate);
@@ -70,6 +70,11 @@ public:
     void setPan           (float norm01) noexcept;   // 0..1 (0=L, 0.5=C, 1=R)
 
 private:
+    // Private copy of this instance's DSP voice state (see shared/VoiceContext.h).
+    // Held through a pointer so this header needs no LXR C headers.
+    struct Ctx;
+    std::unique_ptr<Ctx> ctx;
+
     BlockAccumulator accum;
     BlockAccumulator::Generator generator; // bound once in ctor
 

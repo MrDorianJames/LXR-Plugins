@@ -1,5 +1,6 @@
 #include "SnareEngine.h"
 #include "../shared/LxrEngineBase.h"
+#include "../shared/VoiceContext.h"
 
 extern "C" {
     #include "Snare.h"
@@ -22,8 +23,18 @@ namespace {
     }
 }
 
-SnareEngine::SnareEngine()
+struct SnareEngine::Ctx
 {
+    VoiceContext<SnareVoice> v { &snareVoice, 1 };
+};
+
+SnareEngine::~SnareEngine() = default;
+
+SnareEngine::SnareEngine() : ctx (std::make_unique<Ctx>())
+{
+    // From here on the DSP global holds THIS instance's state.
+    auto lk = ctx->v.lock();
+
     ensureGlobalInit();
     Snare_init();
 
@@ -36,9 +47,9 @@ SnareEngine::SnareEngine()
 }
 
 void SnareEngine::prepare (double sr)         { currentSampleRate = sr; accum.reset(); }
-void SnareEngine::setHostBpm (float bpm) noexcept { lxr_setBpmFloat (bpm); }
-void SnareEngine::trigger (uint8_t v, uint8_t n) noexcept { Snare_trigger (v, n); }
-void SnareEngine::process (float* d, int n) noexcept { accum.fillBuffer (d, n, generator); }
+void SnareEngine::setHostBpm (float bpm) noexcept { auto lk = ctx->v.lock(); lxr_setBpmFloat (bpm); }
+void SnareEngine::trigger (uint8_t v, uint8_t n) noexcept { auto lk = ctx->v.lock(); Snare_trigger (v, n); }
+void SnareEngine::process (float* d, int n) noexcept { auto lk = ctx->v.lock(); accum.fillBuffer (d, n, generator); }
 
 // Parameters --------------------------------------------------------------
 //
@@ -58,11 +69,13 @@ namespace {
 
 void SnareEngine::setOscPitch (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     snareVoice.osc.midiFreq = pitchToMidiFreq (n);
 }
 
 void SnareEngine::setNoiseFilter (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     // The LXR snare voice is intentionally wired so that only the
     // noise oscillator passes through the filter; the tonal oscillator
     // is summed in unfiltered. This lets you shape the "snares" rattle
@@ -73,56 +86,67 @@ void SnareEngine::setNoiseFilter (float n) noexcept
 
 void SnareEngine::setMix (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     snareVoice.mix = std::clamp (n, 0.0f, 1.0f);
 }
 
 void SnareEngine::setPitchEgAmount (float b) noexcept
 {
+    auto lk = ctx->v.lock();
     snareVoice.egPitchModAmount = std::clamp (b, -1.0f, 1.0f);
 }
 
 void SnareEngine::setPitchDecay (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     DecayEg_setDecay (&snareVoice.oscPitchEg, toMidiData (n));
 }
 
 void SnareEngine::setVolEgAttack (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setAttack (&snareVoice.oscVolEg, toMidiData (n), 0);
 }
 
 void SnareEngine::setVolEgDecay (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setDecay (&snareVoice.oscVolEg, toMidiData (n), 0);
 }
 
 void SnareEngine::setVolEgSlope (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setSlope (&snareVoice.oscVolEg, toMidiData (n));
 }
 
 void SnareEngine::setTransientAmt (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     snareVoice.transGen.volume = std::clamp (n, 0.0f, 1.0f);
 }
 
 void SnareEngine::setTransientWave (int i) noexcept
 {
+    auto lk = ctx->v.lock();
     snareVoice.transGen.waveform = static_cast<uint8_t> (std::clamp (i, 0, 7));
 }
 
 void SnareEngine::setSnap (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     snareVoice.snapEg.value = std::clamp (n, 0.0f, 1.0f) * 0.999f;
 }
 
 void SnareEngine::setReso (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     SVF_setReso (&snareVoice.filter, std::clamp (n, 0.0f, 0.99f));
 }
 
 void SnareEngine::setFilterType (int type) noexcept
 {
+    auto lk = ctx->v.lock();
     uint8_t t = 0;
     switch (type) {
         case 1: t = 0x1; break;
@@ -135,16 +159,19 @@ void SnareEngine::setFilterType (int type) noexcept
 
 void SnareEngine::setDistortion (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     setDistortionShape (&snareVoice.distortion, toMidiData (n));
 }
 
 void SnareEngine::setVolume (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     snareVoice.vol = std::clamp (n, 0.0f, 1.0f);
 }
 
 void SnareEngine::setPan (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     Snare_setPan (toMidiData (n));
 }
 

@@ -11,6 +11,7 @@
 #define LXR_STUB_TRIGGEROUT_H
 
 #include <stdint.h>
+#include "MidiVoiceControl.h"
 
 #ifdef __cplusplus
 extern "C" {

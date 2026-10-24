@@ -1,5 +1,6 @@
 #include "DrumEngine.h"
 #include "../shared/LxrEngineBase.h"
+#include "../shared/VoiceContext.h"
 
 extern "C" {
     #include "DrumVoice.h"
@@ -25,8 +26,18 @@ namespace {
     }
 }
 
-DrumEngine::DrumEngine()
+struct DrumEngine::Ctx
 {
+    VoiceContext<DrumVoice> v { voiceArray, NUM_VOICES };
+};
+
+DrumEngine::~DrumEngine() = default;
+
+DrumEngine::DrumEngine() : ctx (std::make_unique<Ctx>())
+{
+    // From here on the DSP global holds THIS instance's state.
+    auto lk = ctx->v.lock();
+
     ensureGlobalInit();
     initDrumVoice();
 
@@ -52,16 +63,19 @@ void DrumEngine::prepare (double sr)
 
 void DrumEngine::setHostBpm (float bpm) noexcept
 {
+    auto lk = ctx->v.lock();
     lxr_setBpmFloat (bpm);
 }
 
 void DrumEngine::trigger (uint8_t velocity, uint8_t note) noexcept
 {
+    auto lk = ctx->v.lock();
     Drum_trigger (static_cast<uint8_t> (kVoiceSlot), velocity, note);
 }
 
 void DrumEngine::process (float* dst, int numSamples) noexcept
 {
+    auto lk = ctx->v.lock();
     accum.fillBuffer (dst, numSamples, generator);
 }
 
@@ -85,12 +99,14 @@ namespace {
 
 void DrumEngine::setPitch (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     // 0.5 = play at the played MIDI note; -36..+36 semitone offset.
     voiceArray[kVoiceSlot].osc.midiFreq = pitchToMidiFreq (norm01);
 }
 
 void DrumEngine::setWaveform (int index) noexcept
 {
+    auto lk = ctx->v.lock();
     // Valid waveforms in the LXR firmware: sine=0, saw=1, tri=2,
     // rec=3, noise=4. Indices 5 and 6 select user-sample slots, which
     // require the SD-card sample memory we stub out as zero on desktop;
@@ -101,22 +117,26 @@ void DrumEngine::setWaveform (int index) noexcept
 
 void DrumEngine::setFmAmount (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     voiceArray[kVoiceSlot].fmModAmount = std::clamp (norm01, 0.0f, 1.0f);
 }
 
 void DrumEngine::setModPitch (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     voiceArray[kVoiceSlot].modOsc.midiFreq = pitchToMidiFreq (norm01);
 }
 
 void DrumEngine::setPitchEgAmount (float bipolar) noexcept
 {
+    auto lk = ctx->v.lock();
     // pitch envelope amount is bipolar in the LXR (negative = downward sweep)
     voiceArray[kVoiceSlot].egPitchModAmount = std::clamp (bipolar, -1.0f, 1.0f);
 }
 
 void DrumEngine::setPitchDecay (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     DecayEg_setDecay (&voiceArray[kVoiceSlot].oscPitchEg, toMidiData (norm01));
 }
 
@@ -124,16 +144,19 @@ void DrumEngine::setPitchDecay (float norm01) noexcept
 
 void DrumEngine::setVolEgAttack (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setAttack (&voiceArray[kVoiceSlot].oscVolEg, toMidiData (norm01), /*isSync=*/0);
 }
 
 void DrumEngine::setVolEgDecay (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setDecay (&voiceArray[kVoiceSlot].oscVolEg, toMidiData (norm01), /*isSync=*/0);
 }
 
 void DrumEngine::setVolEgSlope (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setSlope (&voiceArray[kVoiceSlot].oscVolEg, toMidiData (norm01));
 }
 
@@ -141,16 +164,19 @@ void DrumEngine::setVolEgSlope (float norm01) noexcept
 
 void DrumEngine::setTransientAmt (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     voiceArray[kVoiceSlot].transGen.volume = std::clamp (norm01, 0.0f, 1.0f);
 }
 
 void DrumEngine::setTransientWave (int index) noexcept
 {
+    auto lk = ctx->v.lock();
     voiceArray[kVoiceSlot].transGen.waveform = static_cast<uint8_t> (std::clamp (index, 0, 7));
 }
 
 void DrumEngine::setSnap (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     // The snap EG is an exponential transient on top of the amp EG;
     // we just expose its peak level as a 0..1 scalar. The internal
     // attack/decay are fixed in the LXR.
@@ -161,18 +187,21 @@ void DrumEngine::setSnap (float norm01) noexcept
 
 void DrumEngine::setFilterCutoff (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     SVF_directSetFilterValue (&voiceArray[kVoiceSlot].filter,
                               cutoffSliderToSvfInput (norm01));
 }
 
 void DrumEngine::setFilterReso (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     // SVF_setReso expects a feedback float; valid range is roughly 0..0.99.
     SVF_setReso (&voiceArray[kVoiceSlot].filter, std::clamp (norm01, 0.0f, 0.99f));
 }
 
 void DrumEngine::setFilterType (int type) noexcept
 {
+    auto lk = ctx->v.lock();
     // Bit layout per DrumVoice.h comment:
     //   bit 0 = LP, bit 1 = HP, bit 2 = BP
     // We expose 0=off, 1=LP, 2=HP, 3=BP for plugin sanity.
@@ -190,16 +219,19 @@ void DrumEngine::setFilterType (int type) noexcept
 
 void DrumEngine::setDistortion (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     setDistortionShape (&voiceArray[kVoiceSlot].distortion, toMidiData (norm01));
 }
 
 void DrumEngine::setVolume (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     voiceArray[kVoiceSlot].vol = std::clamp (norm01, 0.0f, 1.0f);
 }
 
 void DrumEngine::setPan (float norm01) noexcept
 {
+    auto lk = ctx->v.lock();
     // setPan() in DrumVoice.c expects 0..127 with 64 being centre.
     // Use :: to call the C global, not recurse into ourselves.
     ::setPan (static_cast<uint8_t> (kVoiceSlot), toMidiData (norm01));

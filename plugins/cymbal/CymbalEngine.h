@@ -1,12 +1,14 @@
 #pragma once
 
 #include "../shared/BlockAccumulator.h"
+
+#include <memory>
 #include <cstdint>
 
 namespace lxr {
 
 /**
- * CymbalEngine - wraps the LXR cymbalVoice singleton (CymbalVoice.c).
+ * CymbalEngine - wraps the LXR cymbalVoice global (CymbalVoice.c); each instance keeps a private copy of its state (see shared/VoiceContext.h).
  *
  * The cymbal is a 3-operator FM voice: one carrier oscillator plus two
  * modulator oscillators, each with its own FM-into-carrier amount. This
@@ -17,7 +19,7 @@ class CymbalEngine
 {
 public:
     CymbalEngine();
-    ~CymbalEngine() = default;
+    ~CymbalEngine();
 
     void prepare (double sampleRate);
     void setHostBpm (float bpm) noexcept;
@@ -58,6 +60,11 @@ public:
     void setPan           (float norm01) noexcept;
 
 private:
+    // Private copy of this instance's DSP voice state (see shared/VoiceContext.h).
+    // Held through a pointer so this header needs no LXR C headers.
+    struct Ctx;
+    std::unique_ptr<Ctx> ctx;
+
     BlockAccumulator accum;
     BlockAccumulator::Generator generator;
     double currentSampleRate { 44100.0 };

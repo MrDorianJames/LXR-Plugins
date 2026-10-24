@@ -1,5 +1,6 @@
 #include "CymbalEngine.h"
 #include "../shared/LxrEngineBase.h"
+#include "../shared/VoiceContext.h"
 
 extern "C" {
     #include "CymbalVoice.h"
@@ -21,8 +22,18 @@ namespace {
     }
 }
 
-CymbalEngine::CymbalEngine()
+struct CymbalEngine::Ctx
 {
+    VoiceContext<CymbalVoice> v { &cymbalVoice, 1 };
+};
+
+CymbalEngine::~CymbalEngine() = default;
+
+CymbalEngine::CymbalEngine() : ctx (std::make_unique<Ctx>())
+{
+    // From here on the DSP global holds THIS instance's state.
+    auto lk = ctx->v.lock();
+
     ensureGlobalInit();
     Cymbal_init();
 
@@ -35,9 +46,9 @@ CymbalEngine::CymbalEngine()
 }
 
 void CymbalEngine::prepare (double sr)         { currentSampleRate = sr; accum.reset(); }
-void CymbalEngine::setHostBpm (float bpm) noexcept { lxr_setBpmFloat (bpm); }
-void CymbalEngine::trigger (uint8_t v, uint8_t n) noexcept { Cymbal_trigger (v, n); }
-void CymbalEngine::process (float* d, int n) noexcept { accum.fillBuffer (d, n, generator); }
+void CymbalEngine::setHostBpm (float bpm) noexcept { auto lk = ctx->v.lock(); lxr_setBpmFloat (bpm); }
+void CymbalEngine::trigger (uint8_t v, uint8_t n) noexcept { auto lk = ctx->v.lock(); Cymbal_trigger (v, n); }
+void CymbalEngine::process (float* d, int n) noexcept { auto lk = ctx->v.lock(); accum.fillBuffer (d, n, generator); }
 
 // Carrier ----------------------------------------------------------------
 //
@@ -57,11 +68,13 @@ namespace {
 
 void CymbalEngine::setPitch (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     cymbalVoice.osc.midiFreq = pitchToMidiFreq (n);
 }
 
 void CymbalEngine::setWaveform (int index) noexcept
 {
+    auto lk = ctx->v.lock();
     // Clamp to safe range - waveforms 5/6 (user samples) read from
     // SD-card memory we don't have on desktop and would crash.
     cymbalVoice.osc.waveform = static_cast<uint8_t> (std::clamp (index, 0, 4));
@@ -71,16 +84,19 @@ void CymbalEngine::setWaveform (int index) noexcept
 
 void CymbalEngine::setMod1Pitch (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     cymbalVoice.modOsc.midiFreq = pitchToMidiFreq (n);
 }
 
 void CymbalEngine::setMod1Amount (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     cymbalVoice.fmModAmount1 = std::clamp (n, 0.0f, 1.0f);
 }
 
 void CymbalEngine::setMod1Waveform (int index) noexcept
 {
+    auto lk = ctx->v.lock();
     // Same waveform set as the carrier, clamped to safe range.
     // Sine gives clean harmonic FM; Noise gives the noisy/metallic
     // character that makes a cymbal sound like a cymbal.
@@ -89,16 +105,19 @@ void CymbalEngine::setMod1Waveform (int index) noexcept
 
 void CymbalEngine::setMod2Pitch (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     cymbalVoice.modOsc2.midiFreq = pitchToMidiFreq (n);
 }
 
 void CymbalEngine::setMod2Amount (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     cymbalVoice.fmModAmount2 = std::clamp (n, 0.0f, 1.0f);
 }
 
 void CymbalEngine::setMod2Waveform (int index) noexcept
 {
+    auto lk = ctx->v.lock();
     cymbalVoice.modOsc2.waveform = static_cast<uint8_t> (std::clamp (index, 0, 4));
 }
 
@@ -106,16 +125,19 @@ void CymbalEngine::setMod2Waveform (int index) noexcept
 
 void CymbalEngine::setVolEgAttack (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setAttack (&cymbalVoice.oscVolEg, toMidiData (n), 0);
 }
 
 void CymbalEngine::setVolEgDecay (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setDecay (&cymbalVoice.oscVolEg, toMidiData (n), 0);
 }
 
 void CymbalEngine::setVolEgSlope (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     slopeEg2_setSlope (&cymbalVoice.oscVolEg, toMidiData (n));
 }
 
@@ -123,16 +145,19 @@ void CymbalEngine::setVolEgSlope (float n) noexcept
 
 void CymbalEngine::setTransientAmt (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     cymbalVoice.transGen.volume = std::clamp (n, 0.0f, 1.0f);
 }
 
 void CymbalEngine::setTransientWave (int index) noexcept
 {
+    auto lk = ctx->v.lock();
     cymbalVoice.transGen.waveform = static_cast<uint8_t> (std::clamp (index, 0, 7));
 }
 
 void CymbalEngine::setSnap (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     cymbalVoice.snapEg.value = std::clamp (n, 0.0f, 1.0f) * 0.999f;
 }
 
@@ -140,16 +165,19 @@ void CymbalEngine::setSnap (float n) noexcept
 
 void CymbalEngine::setFilterCutoff (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     SVF_directSetFilterValue (&cymbalVoice.filter, cutoffSliderToSvfInput (n));
 }
 
 void CymbalEngine::setFilterReso (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     SVF_setReso (&cymbalVoice.filter, std::clamp (n, 0.0f, 0.99f));
 }
 
 void CymbalEngine::setFilterType (int type) noexcept
 {
+    auto lk = ctx->v.lock();
     uint8_t t = 0;
     switch (type) {
         case 1: t = 0x1; break;
@@ -162,16 +190,19 @@ void CymbalEngine::setFilterType (int type) noexcept
 
 void CymbalEngine::setDistortion (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     setDistortionShape (&cymbalVoice.distortion, toMidiData (n));
 }
 
 void CymbalEngine::setVolume (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     cymbalVoice.vol = std::clamp (n, 0.0f, 1.0f);
 }
 
 void CymbalEngine::setPan (float n) noexcept
 {
+    auto lk = ctx->v.lock();
     Cymbal_setPan (toMidiData (n));
 }
 
